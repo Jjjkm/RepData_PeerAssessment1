@@ -1,0 +1,179 @@
+# download the file
+
+```{r}
+library(knitr)
+library(xtable)
+
+filename<-"reproducible_assign_1.zip"
+
+if(! file.exists(filename)){
+        fileurl<-"https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+        download.file(fileurl,filename)
+}
+
+if(!file.exists("Activity")){
+        unzip(filename)
+}
+
+```
+
+# 2 get and clean the data (change to the correct time format)
+
+```{r}
+dat<-read.csv("activity.csv",header = T)
+dat$date<-strptime(dat$date,"%Y-%m-%d")
+##make equally-spaced time labels
+dat$fivemin<-dat$interval%%100+60*dat$interval%/%100 
+
+```
+
+# 3 do some exploratory analysis
+
+## What is mean total number of steps taken per day?
+
+### Calculate the total number of steps taken per day
+
+```{r}
+cleardat<-dat[!is.na(dat$steps),]
+cleardat$date<-as.factor(cleardat$date)
+total_step_day<-aggregate(steps~date,data=cleardat,FUN=sum)
+total_step_day
+```
+
+### Make a histogram of the total number of steps taken each day
+
+```{r}
+library(ggplot2)
+total_step_day$date<-as.factor(total_step_day$date)
+
+step_each_day_plot<-ggplot(total_step_day,aes(x=steps))+geom_histogram(aes (fill=date),bins=30)+ggtitle("histogram of the total number of steps taken each day")+theme_classic()+theme(plot.title = element_text(size=10,color="brown"))
+
+        
+step_each_day_plot
+```
+
+### Calculate and report the mean and median of the total number of steps taken per day
+
+```{r}
+library(dplyr)
+total_step_day_report<-total_step_day%>%summarise("steps",mean=mean(steps),median=median(steps))
+
+total_step_day_report
+
+```
+
+
+## What is the average daily activity pattern?
+
+### Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+
+```{r}
+library(plyr)
+##calculating the average steps
+average_step_by_minute<-ddply(cleardat,~fivemin,summarise,steps=mean(steps))
+
+##plotting
+average_step_plot<-ggplot(average_step_by_minute,aes(x=fivemin,y=steps))+geom_line(color="steelblue")+labs(x="minutes transferred into day",y="average steps")
+
+average_step_plot
+
+```
+
+### Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+
+```{r}
+max_average_step<-which(average_step_by_minute$steps==max(average_step_by_minute$steps))
+max_fivemin<-average_step_by_minute$fivemin[max_average_step]
+max_interval<-dat$interval[which(dat$fivemin==max_fivemin)][1]
+max_interval
+
+```
+
+## Imputing missing values
+
+### Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs)
+
+```{r}
+dat$date<-as.factor(dat$date)
+nrow(dat[!complete.cases(dat),])
+```
+
+### Devise a strategy for filling in all of the missing values in the dataset. (use the mean for that 5-minute interval)
+
+
+```{r}
+five_min_median<-aggregate(steps~fivemin,data=dat,FUN=median)
+five_min_median<-five_min_median%>%mutate(code=as.factor(five_min_median$fivemin))
+dat<-dat%>%mutate(code=as.factor(dat$fivemin))
+```
+
+### Create a new dataset that is equal to the original dataset but with the missing data filled in.
+
+```{r}
+##create a new data frame fill for the NA values in steps
+fill<-dat[which(is.na(dat$steps)),]
+fill<-fill%>%mutate(steps=five_min_median[code,2])
+
+##combine with the original data frame(with out NAs)
+newdat<-rbind(fill,dat[complete.cases(dat),])
+
+```
+
+### Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. 
+
+```{r}
+
+##plotting
+new_total_step_day<-aggregate(steps~date,data=newdat,FUN=sum)
+
+new_step_each_day_plot<-ggplot(new_total_step_day,aes(x=steps))+geom_histogram(aes (fill=date),bins=30)+ggtitle("a new histogram of the total number of steps taken each day")+theme_classic()+theme(plot.title = element_text(size=10,color="brown"))
+
+        
+print(new_step_each_day_plot)
+
+##calculating mean and median
+new_total_step_day_report<-new_total_step_day%>%summarise("steps",mean=mean(steps),median=median(steps))
+
+print(new_total_step_day_report)
+
+```
+
+### Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+**There mean and median values decrease, and the number of low numbers of steps increase**
+
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+### Create a new factor variable in the dataset with two levels – “weekday” and “weekend” indicating whether a given date is a weekday or weekend day.
+
+```{r}
+newdat<-select(newdat,-code)
+newdat$date<-strptime(newdat$date,"%Y-%m-%d")
+newdat<-newdat%>%mutate(week=weekdays(newdat$date))
+
+weekday<-c("Monday","Tuesday","Wednesday","Thursday","Friday")
+
+##using sapply instead of lapply to not generate list
+newdat$week<-sapply(newdat$week,function(x)if (x%in% weekday){x<-"weekday"} else {x<-"weekend"})
+
+newdat$week<-as.factor(newdat$week)
+
+```
+
+
+### Make a panel plot containing a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis). The plot should look something like the following, which was created using simulated data:
+
+```{r}
+week_step_day<-aggregate(steps~fivemin+week,data=newdat,FUN=mean)
+
+ggplot(week_step_day,aes(x=fivemin,y=steps))+geom_line()+
+        facet_grid(week~.)
+
+
+```
+
+knit2html()
+
+
+
